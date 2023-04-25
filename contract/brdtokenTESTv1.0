@@ -1,0 +1,45 @@
+ 
+ // SPDX-License-Identifier: MIT
+ pragma solidity ^0.8.18;
+ 
+ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+ import "@openzeppelin/contracts/access/Ownable.sol";
+ 
+ contract BlueBirdToken is ERC20, Ownable {
+	 IERC20 public wsgbToken;
+	 address public liquidityPool;
+	 address public developmentFund;
+	 uint256 public totalMinedSupply;
+	 uint256 public miningReward;
+	 uint256 private constant LIQUIDITY_POOL_FEE = 10; // 0.1%
+	 uint256 private constant DEVELOPMENT_FUND_FEE = 1; // 0.01%
+	 
+	 constructor(address _wsgbToken, address _liquidityPool, address _developmentFund) ERC20("Bluebird Token", "BRD") {
+		 wsgbToken = IERC20(_wsgbToken);
+		 liquidityPool = _liquidityPool;
+		 developmentFund = _developmentFund;
+		 totalMinedSupply = 0;
+		 miningReward = 5 * 10**18; // 0.5 BRD per 100 WSGB initially
+	 }
+	 function mineTokens(uint256 wsgbAmount) external {
+		 require(wsgbAmount >= 1 * 10**18, "Minimum 1 WSGB required for mining");
+		 uint256 newMinedSupply = totalMinedSupply + miningReward;
+		 
+		 if (newMinedSupply >= (totalMinedSupply / 10)) {
+			 miningReward /= 2;
+		 }
+		 
+		 wsgbToken.transferFrom(msg.sender, address(this), wsgbAmount);
+		 _mint(msg.sender, miningReward);
+		 totalMinedSupply = newMinedSupply;
+	 }
+	 function distributeTransactionFees(uint256 wsgbAmount) external {
+		 uint256 liquidityPoolReward = (wsgbAmount * LIQUIDITY_POOL_FEE) / 10000;
+		 uint256 developmentFundReward = (wsgbAmount * DEVELOPMENT_FUND_FEE) / 10000;
+		 
+		 wsgbToken.transferFrom(msg.sender, liquidityPool, liquidityPoolReward);
+		 wsgbToken.transferFrom(msg.sender, developmentFund, developmentFundReward);
+	 }
+ }
+ 
