@@ -1,0 +1,56 @@
+BlueBird - Bridging Twitter and the Blockchain.
+
+The BlueBird project is a decentralized application (dApp) that aims to bridge the gap between Twitter and the blockchain. It provides a platform for Twitter users to link their Twitter handles with their crypto wallets and seamlessly send transactions to other Twitter users. BlueBird is built on the Songbird Network, an EVM-compatible blockchain that provides fast, secure, and low-cost transactions. 
+
+Tokenomics;
+
+
+The BlueBird dApp uses two tokens, wrapped Songbird (WSGB) and the BlueBird (BRD) token. WSGB is the primary means of exchange on the platform, while BRD is an incentive reward token that is earned by users who transact on the platform. The BlueBird token has a total supply of 1 billion tokens, and the token distribution is as follows: 50% for platform mining rewards, 25%, for liquidity pool rewards, 15% for development fund, 10% for team and advisors. The BlueBird dApp uses two tokens, the Songbird (SGB) and the BlueBird (BRD) token. SGB is the primary means of exchange on the platform, while BRD is an incentive reward token that is earned by users who transact on the platform. The BlueBird token has a total supply of 1 billion tokens, and the token distribution is as follows: 50% for platform mining rewards, 25%, for liquidity pool rewards, 15% for development fund, 10% for team and advisors. Initial minted supply on deployment will be 1 million tokens, upon deployment tokens can not be purchased and only mined by users of the dApp for simply utilizing the platform to transact wsgb wrapped Songbird tokens.
+
+
+
+Platform Mining Rewards; 
+
+
+
+The BlueBird smart contract has a built-in mining function that rewards users with BRD tokens for every WSGB transaction they make on the platform. Initially, the mining reward is set at a 50% ratio of 0.5 BRD reward for every WSGB sent. When the total mined supply reaches 10% of the total token supply (100 million tokens), the mining reward is halved to 25% at 1/4 BRD for evry WSGB sent. This halving continues every time the total mined supply reaches the next 10% milestone until the mining reward reaches 0.
+
+
+
+Liquidity Pool Rewards;
+
+
+
+A portion of the transaction fee (0.1%) is allocated to the liquidity pool reward. This reward incentivizes users to provide liquidity to the BlueBird token and WSGB pool, improving the overall liquidity and stability of the platform. 
+
+
+
+Development Fund;
+
+
+
+A portion of the transaction fee (0.01%) is allocated to the development fund. This fund is used to improve the platform's features, security, and user experience.  
+
+
+
+Team and Advisor Allocation;
+
+
+
+The team and advisor allocation of the BlueBird token is important to ensure the long-term development and success of the project. The allocation is structured as follows: 2.5% of the total supply is allocated to the founding team, 2.5% of the total supply is allocated to advisors. The team and advisor allocation is locked for a period of 12 months, with a 25% release each quarter after the initial 12-month lockup period. 
+
+
+
+BRD Token Utility and Future Use Cases;
+
+
+
+The BlueBird dApp is just the first step in the BlueBird project's roadmap. The BRD token is designed to have a broad range of utility and use cases beyond the BlueBird dApp. Some potential future use cases for BRD token are: Governance: The BRD token can be used for governance, allowing token holders to vote on proposals and decisions related to the BlueBird project's development and direction. Staking: The BRD token can be used for staking, allowing token holders to earn rewards for providing security and stability to the network. Cross-chain utility: The BRD token can be used as a bridge between different blockchains, allowing users to transfer value and assets between them.
+
+
+
+Conclusion;
+
+
+
+The BlueBird project is an innovative solution that aims to bridge the gap between Twitter and the blockchain. The project's tokenomics and reward system incentivize users to transact on the platform while providing liquidity and stability. The BRD token is a crucial part of the BlueBird project and has a broad range of potential future use cases beyond the dApp. The team and advisor allocation is structured to ensure the long-term development and success of the project. 
