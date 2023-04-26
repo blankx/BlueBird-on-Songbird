@@ -1,0 +1,23 @@
+import os
+from mnemonic import Mnemonic
+
+def generate_bip32_seed_phrase(num_words=12):
+    try:
+        # Generate entropy with the desired strength (128 bits for 12 words)
+        entropy_bits = num_words * 32 // 3
+        entropy = os.urandom(entropy_bits // 8)
+
+        # Generate the mnemonic seed phrase from the entropy
+        mnemo = Mnemonic("english")
+        mnemonic = mnemo.to_mnemonic(entropy)
+
+        return mnemonic
+    except ValueError:
+        print("An error occurred while generating the seed phrase. Please try again.")
+        return None
+
+if __name__ == "__main__":
+    seed_phrase = generate_bip32_seed_phrase()
+    if seed_phrase:
+        print("Generated BIP32 12-word seed phrase:")
+        print(seed_phrase)
