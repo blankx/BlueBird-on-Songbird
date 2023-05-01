@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract Bluetester is ERC20 {
+
+    IERC20 public wsgbToken;
+    address public developmentFund;
+    address public liquidityPool;
+    uint256 public miningRate;
+    uint256 public currentMiningRate = 50;
+    uint256 public liquidityPoolRate = 1000;
+    uint256 public developmentFundRate = 100;
+
+    uint256 public totalMinedSupply;
+    uint256 public constant MINING_REWARD_HALVING_INTERVAL = 100_000_000 * 10**18;
+
+    mapping(address => uint256) private lastRewardClaim;
+
+    struct Allocation {
+    uint256 amount;
+    uint256 claimed;
+    uint256 lastClaim;
+}
+
+uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
+uint256 public constant INITIAL_LOCK_PERIOD = 365 days;
+uint256 public constant QUARTER = 91 days;
+
+mapping(address => Allocation) public teamAdvisorAllocations;
+
+uint256 public deploymentTime;
+
+    event RewardClaimed(address indexed user, uint256 amount);
+
+        constructor(
+        address _wsgbTokenAddress,
+        address _developmentFund,
+        address _liquidityPool,
+        address[] memory teamAdvisors,
+        uint256[] memory _teamAdvisorAllocationAmounts
+    ) ERC20("BlueBird Token", "Btst") {
+        wsgbToken = IERC20(_wsgbTokenAddress);
+        developmentFund = _developmentFund;
+        liquidityPool = _liquidityPool;
+        miningRate = 50;
+        deploymentTime = block.timestamp;
+        // Check if input arrays have the same length
+        require(teamAdvisors.length == _teamAdvisorAllocationAmounts.length, "Input array lengths must match");
+
+        // Assign allocations to team and advisors
+        for (uint256 i = 0; i < teamAdvisors.length; i++) {
+            Allocation memory allocation;
+            allocation.amount = _teamAdvisorAllocationAmounts[i];
+            allocation.claimed = 0;
+            allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
+            teamAdvisorAllocations[teamAdvisors[i]] = allocation;
+        }
+    }
+
+
+modifier enforceMaxSupply(uint256 amount) {
+    require(totalSupply() + amount <= MAX_SUPPLY, "Exceeds maximum supply");
+    _;
+}
+
+function _mint(address account, uint256 amount) internal virtual override enforceMaxSupply(amount) {
+    super._mint(account, amount);
+}
+
+
+    function mine(uint256 wsgbAmount, address recipient) external {
+        require(wsgbAmount > 0, "Mine: WSGb amount should be greater than 0");
+        require(recipient != address(0), "Mine: Recipient address cannot be 0x0");
+
+        uint256 brdReward = wsgbAmount * currentMiningRate / 100;
+
+        wsgbToken.transferFrom(msg.sender, recipient, wsgbAmount);
+        _mint(msg.sender, brdReward);
+        totalMinedSupply += brdReward;
+
+        _updateMiningRewardRate();
+    }
+
+    function _updateMiningRewardRate() private {
+        if (totalMinedSupply >= MINING_REWARD_HALVING_INTERVAL) {
+            currentMiningRate /= 2;
+            totalMinedSupply = 0;
+        }
+    }
+
+
+    function claimReward() external {
+        uint256 currentTime = block.timestamp;
+        uint256 timeSinceLastClaim = currentTime - lastRewardClaim[msg.sender];
+
+        require(timeSinceLastClaim >= 1 days, "Claim: At least 24 hours must pass between claims");
+
+        uint256 reward = balanceOf(msg.sender) * 1 / 100;
+        lastRewardClaim[msg.sender] = currentTime;
+
+        _mint(msg.sender, reward);
+        emit RewardClaimed(msg.sender, reward);
+    }
+
+    function claimTeamAdvisorAllocation() external {
+    require(block.timestamp >= deploymentTime + INITIAL_LOCK_PERIOD, "Tokens are still locked");
+    Allocation storage allocation = teamAdvisorAllocations[msg.sender];
+    require(allocation.amount > 0, "No allocation found");
+
+    uint256 quartersPassed = (block.timestamp - allocation.lastClaim) / QUARTER;
+    require(quartersPassed > 0, "Already claimed for this quarter");
+
+    uint256 claimable = allocation.amount * 25 / 100 * quartersPassed;
+    uint256 remainingClaimable = allocation.amount - allocation.claimed;
+    uint256 actualClaim = claimable < remainingClaimable ? claimable : remainingClaimable;
+
+    require(actualClaim > 0, "Nothing left to claim");
+
+    allocation.claimed += actualClaim;
+    allocation.lastClaim = block.timestamp;
+
+    _mint(msg.sender, actualClaim);
+}
+
+}
+
