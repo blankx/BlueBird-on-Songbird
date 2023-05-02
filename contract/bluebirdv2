@@ -9,9 +9,11 @@ contract Bluetester is ERC20 {
     address public developmentFund;
     address public liquidityPool;
     uint256 public miningRate;
-    uint256 public currentMiningRate = 50;
-    uint256 public liquidityPoolRate = 1000;
-    uint256 public developmentFundRate = 100;
+    uint256 public currentMiningRate = 50; //50%
+    uint256 public liquidityPoolRate = 2500; // 25%
+    uint256 public developmentFundRate = 1500; // 15%
+    uint256 public teamAdvisorsRate = 1000; // 10%
+
 
     uint256 public totalMinedSupply;
     uint256 public constant MINING_REWARD_HALVING_INTERVAL = 100_000_000 * 10**18;
@@ -47,26 +49,32 @@ uint256 public deploymentTime;
     miningRate = 50;
     deploymentTime = block.timestamp;
 
-    // Mint tokens for the liquidity pool and development fund
-    uint256 liquidityPoolTokens = MAX_SUPPLY * liquidityPoolRate / 10000;
-    uint256 developmentFundTokens = MAX_SUPPLY * developmentFundRate / 10000;
-    _mint(liquidityPool, liquidityPoolTokens);
-    _mint(developmentFund, developmentFundTokens);
+    // Mint tokens for the liquidity pool, development fund, and team and advisors
+uint256 liquidityPoolTokens = MAX_SUPPLY * liquidityPoolRate / 10000;
+uint256 developmentFundTokens = MAX_SUPPLY * developmentFundRate / 10000;
+uint256 teamAdvisorsTotalTokens = MAX_SUPPLY * teamAdvisorsRate / 10000;
 
-    // Check if input arrays have the same length
-    require(teamAdvisors.length == _teamAdvisorAllocationAmounts.length, "Input array lengths must match");
+_mint(liquidityPool, liquidityPoolTokens);
+_mint(developmentFund, developmentFundTokens);
 
-    // Assign allocations to team and advisors and mint tokens
-    for (uint256 i = 0; i < teamAdvisors.length; i++) {
-        Allocation memory allocation;
-        allocation.amount = _teamAdvisorAllocationAmounts[i];
-        allocation.claimed = 0;
-        allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
-        teamAdvisorAllocations[teamAdvisors[i]] = allocation;
+uint256 teamAdvisorsAllocatedTokens = 0;
 
-        // Mint tokens for the team advisors
-        _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
-    }
+// Assign allocations to team and advisors and mint tokens
+for (uint256 i = 0; i < teamAdvisors.length; i++) {
+    Allocation memory allocation;
+    allocation.amount = _teamAdvisorAllocationAmounts[i];
+    allocation.claimed = 0;
+    allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
+    teamAdvisorAllocations[teamAdvisors[i]] = allocation;
+
+    // Mint tokens for the team advisors
+    _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
+
+    teamAdvisorsAllocatedTokens += _teamAdvisorAllocationAmounts[i];
+}
+
+// Ensure that the total tokens minted for team advisors do not exceed the specified percentage
+require(teamAdvisorsAllocatedTokens == teamAdvisorsTotalTokens, "Total tokens minted for team advisors must match the specified percentage");
 }
 
 
