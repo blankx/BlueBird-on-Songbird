@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract Bluetester is ERC20 {
 
-    IERC20 public wsgbToken;
+    IERC20  public wsgbToken;
     address public developmentFund;
     address public liquidityPool;
     uint256 public miningRate;
@@ -34,30 +34,40 @@ uint256 public deploymentTime;
 
     event RewardClaimed(address indexed user, uint256 amount);
 
-        constructor(
-        address _wsgbTokenAddress,
-        address _developmentFund,
-        address _liquidityPool,
-        address[] memory teamAdvisors,
-        uint256[] memory _teamAdvisorAllocationAmounts
-    ) ERC20("BlueBird Token", "Btst") {
-        wsgbToken = IERC20(_wsgbTokenAddress);
-        developmentFund = _developmentFund;
-        liquidityPool = _liquidityPool;
-        miningRate = 50;
-        deploymentTime = block.timestamp;
-        // Check if input arrays have the same length
-        require(teamAdvisors.length == _teamAdvisorAllocationAmounts.length, "Input array lengths must match");
+    constructor(
+    address _wsgbTokenAddress,
+    address _developmentFund,
+    address _liquidityPool,
+    address[] memory teamAdvisors,
+    uint256[] memory _teamAdvisorAllocationAmounts
+) ERC20("BlueBird Token", "Btst") {
+    wsgbToken = IERC20(_wsgbTokenAddress);
+    developmentFund = _developmentFund;
+    liquidityPool = _liquidityPool;
+    miningRate = 50;
+    deploymentTime = block.timestamp;
 
-        // Assign allocations to team and advisors
-        for (uint256 i = 0; i < teamAdvisors.length; i++) {
-            Allocation memory allocation;
-            allocation.amount = _teamAdvisorAllocationAmounts[i];
-            allocation.claimed = 0;
-            allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
-            teamAdvisorAllocations[teamAdvisors[i]] = allocation;
-        }
+    // Mint tokens for the liquidity pool and development fund
+    uint256 liquidityPoolTokens = MAX_SUPPLY * liquidityPoolRate / 10000;
+    uint256 developmentFundTokens = MAX_SUPPLY * developmentFundRate / 10000;
+    _mint(liquidityPool, liquidityPoolTokens);
+    _mint(developmentFund, developmentFundTokens);
+
+    // Check if input arrays have the same length
+    require(teamAdvisors.length == _teamAdvisorAllocationAmounts.length, "Input array lengths must match");
+
+    // Assign allocations to team and advisors and mint tokens
+    for (uint256 i = 0; i < teamAdvisors.length; i++) {
+        Allocation memory allocation;
+        allocation.amount = _teamAdvisorAllocationAmounts[i];
+        allocation.claimed = 0;
+        allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
+        teamAdvisorAllocations[teamAdvisors[i]] = allocation;
+
+        // Mint tokens for the team advisors
+        _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
     }
+}
 
 
 modifier enforceMaxSupply(uint256 amount) {
