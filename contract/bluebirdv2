@@ -3,144 +3,123 @@ pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Bluetester is ERC20 {
-
-    IERC20  public wsgbToken;
+contract BlueBirdToken is ERC20 {
+    IERC20 public wsgbToken;
     address public developmentFund;
     address public liquidityPool;
     uint256 public miningRate;
-    uint256 public currentMiningRate = 50; //50%
-    uint256 public liquidityPoolRate = 2500; // 25%
-    uint256 public developmentFundRate = 1500; // 15%
-    uint256 public teamAdvisorsRate = 1000; // 10%
-
-
+    uint256 public currentMiningRate = 50;
+    uint256 public liquidityPoolRate = 2500;
+    uint256 public developmentFundRate = 1500;
+    uint256 public teamAdvisorsRate = 1000;
+    uint256 public deploymentTime;
+    
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
     uint256 public totalMinedSupply;
-    uint256 public constant MINING_REWARD_HALVING_INTERVAL = 100_000_000 * 10**18;
+    uint256 public remainingSupply = MAX_SUPPLY;
+    uint256 public targetMinedSupply;
+    uint256 public constant SUPPLY_REDUCTION_PERCENTAGE = 10;
+    uint256 public constant MAX_ALLOWED_BALANCE_PERCENTAGE = 50; // 0.5%
+    uint256 public constant TRANSFER_LIMIT = 10; // 0.1% of total BRD supply
+    uint256 public constant SLIDING_TRANSFER_FEE_THRESHOLD = 1; // 0.01% of total supply
 
+    mapping(address => bool) public isExcludedFromMaxBalance;
     mapping(address => uint256) private lastRewardClaim;
-
     struct Allocation {
-    uint256 amount;
-    uint256 claimed;
-    uint256 lastClaim;
-}
-
-uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
-uint256 public constant INITIAL_LOCK_PERIOD = 365 days;
-uint256 public constant QUARTER = 91 days;
-
-mapping(address => Allocation) public teamAdvisorAllocations;
-
-uint256 public deploymentTime;
-
-    event RewardClaimed(address indexed user, uint256 amount);
-
-    constructor(
-    address _wsgbTokenAddress,
-    address _developmentFund,
-    address _liquidityPool,
-    address[] memory teamAdvisors,
-    uint256[] memory _teamAdvisorAllocationAmounts
-) ERC20("BlueBird Test", "Btst") {
-    wsgbToken = IERC20(_wsgbTokenAddress);
-    developmentFund = _developmentFund;
-    liquidityPool = _liquidityPool;
-    miningRate = 50;
-    deploymentTime = block.timestamp;
-
-    // Mint tokens for the liquidity pool, development fund, and team and advisors
-uint256 liquidityPoolTokens = MAX_SUPPLY * liquidityPoolRate / 10000;
-uint256 developmentFundTokens = MAX_SUPPLY * developmentFundRate / 10000;
-uint256 teamAdvisorsTotalTokens = MAX_SUPPLY * teamAdvisorsRate / 10000;
-
-_mint(liquidityPool, liquidityPoolTokens);
-_mint(developmentFund, developmentFundTokens);
-
-uint256 teamAdvisorsAllocatedTokens = 0;
-
-// Assign allocations to team and advisors and mint tokens
-for (uint256 i = 0; i < teamAdvisors.length; i++) {
-    Allocation memory allocation;
-    allocation.amount = _teamAdvisorAllocationAmounts[i];
-    allocation.claimed = 0;
-    allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
-    teamAdvisorAllocations[teamAdvisors[i]] = allocation;
-
-    // Mint tokens for the team advisors
-    _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
-
-    teamAdvisorsAllocatedTokens += _teamAdvisorAllocationAmounts[i];
-}
-
-// Ensure that the total tokens minted for team advisors do not exceed the specified percentage
-require(teamAdvisorsAllocatedTokens == teamAdvisorsTotalTokens, "Total tokens minted for team advisors must match the specified percentage");
-}
-
-
-modifier enforceMaxSupply(uint256 amount) {
-    require(totalSupply() + amount <= MAX_SUPPLY, "Exceeds maximum supply");
-    _;
-}
-
-function _mint(address account, uint256 amount) internal virtual override enforceMaxSupply(amount) {
-    super._mint(account, amount);
-}
-
-
-    function mine(uint256 wsgbAmount, address recipient) external {
-        require(wsgbAmount > 0, "Mine: WSGb amount should be greater than 0");
-        require(recipient != address(0), "Mine: Recipient address cannot be 0x0");
-
-        uint256 brdReward = wsgbAmount * currentMiningRate / 100;
-
-        wsgbToken.transferFrom(msg.sender, recipient, wsgbAmount);
-        _mint(msg.sender, brdReward);
-        totalMinedSupply += brdReward;
-
-        _updateMiningRewardRate();
+        uint256 amount;
+        uint256 claimed;
+        uint256 lastClaim;
     }
+    
+    event RewardClaimed(address indexed user, uint256 amount);
+    
+    uint256 public constant INITIAL_LOCK_PERIOD = 365 days;
+    uint256 public constant QUARTER = 91 days;
+    mapping(address => Allocation) public teamAdvisorAllocations;
+    
+    constructor(
+        address _wsgbTokenAddress,
+        address _developmentFund,
+        address _liquidityPool,
+        address[] memory teamAdvisors,
+        uint256[] memory _teamAdvisorAllocationAmounts
+    ) ERC20("BlueBird Token", "BRD") {
+        wsgbToken = IERC20(_wsgbTokenAddress);
+        developmentFund = _developmentFund;
+        liquidityPool = _liquidityPool;
+        miningRate = 50;
+        deploymentTime = block.timestamp;
 
-    function _updateMiningRewardRate() private {
-        if (totalMinedSupply >= MINING_REWARD_HALVING_INTERVAL) {
-            currentMiningRate /= 2;
-            totalMinedSupply = 0;
+        // Mint tokens for the liquidity pool, development fund, and team and advisors
+        uint256 liquidityPoolTokens = MAX_SUPPLY * liquidityPoolRate / 10000;
+        uint256 developmentFundTokens = MAX_SUPPLY * developmentFundRate / 10000;
+        uint256 teamAdvisorsTotalTokens = MAX_SUPPLY * teamAdvisorsRate / 10000;
+
+        _mint(liquidityPool, liquidityPoolTokens);
+        _mint(developmentFund, developmentFundTokens);
+        uint256 teamAdvisorsAllocatedTokens = 0;
+
+        // Assign allocations to team and advisors and mint tokens
+        for (uint256 i = 0; i < teamAdvisors.length; i++) {
+            Allocation memory allocation;
+            allocation.amount = _teamAdvisorAllocationAmounts[i];
+            allocation.claimed = 0;
+            allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
+            teamAdvisorAllocations[teamAdvisors[i]] = allocation;
+
+            // Mint tokens for the team advisors
+            _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
+
+            teamAdvisorsAllocatedTokens += _teamAdvisorAllocationAmounts[i];
+        }
+
+                // Ensure that the total tokens minted for team advisors do not exceed the specified percentage
+        require(teamAdvisorsAllocatedTokens == teamAdvisorsTotalTokens, "Allocations do not match total tokens for team and advisors");
+
+        // Exclude development fund, liquidity pool, and team advisor wallets from the maximum allowed balance
+        isExcludedFromMaxBalance[developmentFund] = true;
+        isExcludedFromMaxBalance[liquidityPool] = true;
+        for (uint256 i = 0; i < teamAdvisors.length; i++) {
+            isExcludedFromMaxBalance[teamAdvisors[i]] = true;
         }
     }
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
 
+        uint256 maxAllowedBalance = MAX_SUPPLY * MAX_ALLOWED_BALANCE_PERCENTAGE / 10000;
+        if (!isExcludedFromMaxBalance[recipient]) {
+            require(balanceOf(recipient) + amount <= maxAllowedBalance, "Recipient's balance exceeds the maximum allowed");
+        }
 
-    function claimReward() external {
-        uint256 currentTime = block.timestamp;
-        uint256 timeSinceLastClaim = currentTime - lastRewardClaim[msg.sender];
+        uint256 transferAmount = amount;
+        if (amount > MAX_SUPPLY * TRANSFER_LIMIT / 10000) {
+            transferAmount = MAX_SUPPLY * TRANSFER_LIMIT / 10000;
+        }
 
-        require(timeSinceLastClaim >= 1 days, "Claim: At least 24 hours must pass between claims");
-
-        uint256 reward = balanceOf(msg.sender) * 1 / 100;
-        lastRewardClaim[msg.sender] = currentTime;
-
-        _mint(msg.sender, reward);
-        emit RewardClaimed(msg.sender, reward);
+        uint256 fee = 0;
+        if (amount > MAX_SUPPLY * SLIDING_TRANSFER_FEE_THRESHOLD / 10000) {
+            fee = amount / 10;
+        }
+        uint256 actualAmount = transferAmount - fee;
+        super._transfer(sender, recipient, actualAmount);
+        if (fee > 0) {
+            super._transfer(sender, developmentFund, fee);
+        }
     }
-
     function claimTeamAdvisorAllocation() external {
-    require(block.timestamp >= deploymentTime + INITIAL_LOCK_PERIOD, "Tokens are still locked");
-    Allocation storage allocation = teamAdvisorAllocations[msg.sender];
-    require(allocation.amount > 0, "No allocation found");
+        Allocation storage allocation = teamAdvisorAllocations[msg.sender];
+        require(allocation.amount > 0, "You do not have an allocation");
+        require(block.timestamp >= allocation.lastClaim + QUARTER, "Claim not allowed yet");
 
-    uint256 quartersPassed = (block.timestamp - allocation.lastClaim) / QUARTER;
-    require(quartersPassed > 0, "Already claimed for this quarter");
+        uint256 claimable = allocation.amount * 25 / 100; // 25% claimable per quarter
+        allocation.claimed += claimable;
+        require(allocation.claimed <= allocation.amount, "Nothing left to claim");
 
-    uint256 claimable = allocation.amount * 25 / 100 * quartersPassed;
-    uint256 remainingClaimable = allocation.amount - allocation.claimed;
-    uint256 actualClaim = claimable < remainingClaimable ? claimable : remainingClaimable;
+        allocation.lastClaim = block.timestamp;
+        _transfer(address(this), msg.sender, claimable);
 
-    require(actualClaim > 0, "Nothing left to claim");
-
-    allocation.claimed += actualClaim;
-    allocation.lastClaim = block.timestamp;
-
-    _mint(msg.sender, actualClaim);
-}
-
+        emit RewardClaimed(msg.sender, claimable);
+    }
 }
 
