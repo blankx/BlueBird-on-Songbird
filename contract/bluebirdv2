@@ -8,7 +8,7 @@ contract BlueBirdToken is ERC20 {
     address public developmentFund;
     address public liquidityPool;
     uint256 public miningRate;
-    uint256 public currentMiningRate = 50;
+    uint256 public currentMiningRate = 100;
     uint256 public liquidityPoolRate = 2500;
     uint256 public developmentFundRate = 1500;
     uint256 public teamAdvisorsRate = 1000;
