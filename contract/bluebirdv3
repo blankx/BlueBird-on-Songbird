@@ -7,10 +7,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
+contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
 
-    IERC20 public wsgbToken;
     address public developmentFund;
     address public liquidityPool;
     uint256 public miningRate;
@@ -25,15 +24,15 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
     uint256 public targetMinedSupply;
     uint256 public constant SUPPLY_REDUCTION_PERCENTAGE = 10;
     uint256 public constant MAX_ALLOWED_BALANCE_PERCENTAGE = 50; // 0.5%
-    uint256 public constant TRANSFER_LIMIT = 10; // 0.1% of total BTST supply
+    uint256 public constant TRANSFER_LIMIT = 10; // 0.1% of total BBX supply
     uint256 public SLIDING_TRANSFER_FEE_THRESHOLD = 1; // 0.01% of total supply
 
     uint256 public transferFeeRate = 1; // 0.1% of the amount
     uint256 public developmentFundFeeRate = 1; // 0.01% of the amount
 
     mapping(address => bool) public isExcludedFromMaxBalance;
+    mapping(address => bool) public isExcludedFromTransferFee;
     mapping(address => uint256) private lastRewardClaim;
-    mapping(address => uint256) public wsgbBalance;
     mapping(address => uint256) private _balances;
 
     struct Allocation {
@@ -45,8 +44,8 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
     mapping(address => Allocation) public teamAdvisorAllocations;
 
     event RewardClaimed(address indexed user, uint256 amount);
-    event WsgbTransferred(address indexed sender, address indexed recipient, uint256 amount);
-    event WsgbTransacted(address indexed sender, address indexed recipient, uint256 wsgbAmount, uint256 rewardAmount);
+    event TokenTransferred(address indexed sender, address indexed recipient, uint256 amount);
+    event TokenTransacted(address indexed sender, address indexed recipient, uint256 tokenAmount, uint256 rewardAmount);
     event TeamAdvisorDistributionClaimed(address indexed teamAdvisor, uint256 amount);
 
     uint256 public constant INITIAL_LOCK_PERIOD = 365 days;
@@ -54,28 +53,17 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
 
     mapping(address => bool) public eligibleTokens;
     mapping(address => uint256) public tokenMiningRates;
-    address[] public eligibleTokenAddresses; // Added array to keep track of eligible tokens
-
-    modifier updateMiningRate() {
-        if (totalMinedSupply >= targetMinedSupply) {
-            currentMiningRate = currentMiningRate.sub(currentMiningRate.mul(SUPPLY_REDUCTION_PERCENTAGE).div(100));
-            targetMinedSupply = remainingSupply.mul(100 - SUPPLY_REDUCTION_PERCENTAGE).div(100);
-        }
-        _;
-    }
+    address[] public eligibleTokenAddresses; // array to keep track of eligible tokens
 
     constructor(
-        address _wsgbTokenAddress,
         address _developmentFund,
         address _liquidityPool,
         address[] memory teamAdvisors,
         uint256[] memory _teamAdvisorAllocationAmounts
-    ) ERC20("BlueBird Alpha", "Btst") {
-        require(_wsgbTokenAddress != address(0), "Wsgb token address cannot be zero address");
+    ) ERC20("BlueBirdX", "BRD") {
         require(_developmentFund != address(0), "Development fund address cannot be zero address");
         require(_liquidityPool != address(0), "Liquidity pool address cannot be zero address");
 
-        wsgbToken = IERC20(_wsgbTokenAddress);
         developmentFund = _developmentFund;
         liquidityPool = _liquidityPool;
         miningRate = 50;
@@ -180,7 +168,7 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
-    function transactTokens(address tokenAddress, address recipient, uint256 amount) external nonReentrant updateMiningRate {
+    function transactTokens(address tokenAddress, address recipient, uint256 amount) external nonReentrant {
         require(eligibleTokens[tokenAddress], "Token is not eligible for mining rewards");
 
         // Calculate the regular transfer fee
@@ -195,7 +183,6 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
             IERC20(tokenAddress).balanceOf(msg.sender) >= amount + totalFee,
             "Insufficient balance to cover amount and fees"
         );
-
         // Transfer the amount minus the fees from the sender to the recipient
         IERC20(tokenAddress).transferFrom(msg.sender, recipient, amount - totalFee);
 
@@ -211,11 +198,10 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
         require(totalMinedSupply <= MAX_SUPPLY, "Total mined supply cannot exceed MAX_SUPPLY");
         remainingSupply = MAX_SUPPLY - totalMinedSupply;
 
-        // Update the user's balance and Wsgb balance
+        // Update the user's balance
         _mint(msg.sender, rewardAmount);
-        wsgbBalance[msg.sender] += amount;
 
-        emit WsgbTransacted(msg.sender, recipient, amount, rewardAmount);
+        emit TokenTransacted(msg.sender, recipient, amount, rewardAmount);
     }
 
     function claimReward() external nonReentrant {
@@ -235,9 +221,11 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
         return eligibleTokenAddresses;
     }
 
-    function setMiningRate(uint256 newMiningRate) external onlyOwner {
+    function setMiningRate(address tokenAddress, uint256 newMiningRate) external onlyOwner {
+        require(eligibleTokens[tokenAddress], "Token is not eligible for mining rewards");
         require(newMiningRate > 0, "New mining rate must be greater than 0");
-        miningRate = newMiningRate;
+
+        tokenMiningRates[tokenAddress] = newMiningRate;
     }
 
     function setTransferFeeRates(uint256 newTransferFee, uint256 newDevelopmentFundFee) external onlyOwner {
@@ -277,5 +265,21 @@ contract BlueBirdToken is ERC20, Ownable, ReentrancyGuard {
 
             emit TeamAdvisorDistributionClaimed(msg.sender, amountToClaim);
         }
+    }
+
+    function excludeFromTransferFee(address account) external onlyOwner {
+        isExcludedFromTransferFee[account] = true;
+    }
+
+    function includeInTransferFee(address account) external onlyOwner {
+        isExcludedFromTransferFee[account] = false;
+    }
+
+    function excludeFromMaxBalance(address account) external onlyOwner {
+        isExcludedFromMaxBalance[account] = true;
+    }
+
+    function includeInMaxBalance(address account) external onlyOwner {
+        isExcludedFromMaxBalance[account] = false;
     }
 }
