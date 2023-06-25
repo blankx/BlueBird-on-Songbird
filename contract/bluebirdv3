@@ -12,11 +12,12 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
 
     address public developmentFund;
     address public liquidityPool;
+    address public teamAdvisors;
     uint256 public miningRate;
     uint256 public currentMiningRate = 100;
-    uint256 public liquidityPoolRate = 3000;
-    uint256 public developmentFundRate = 1500;
-    uint256 public teamAdvisorsRate = 500;
+    uint256 public liquidityPoolRate = 2000; // 20% of all mined tokens
+    uint256 public developmentFundRate = 500; // 5% of all mined tokens
+    uint256 public teamAdvisorsRate = 500; // 5% of all mined tokens
     uint256 public deploymentTime;
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
     uint256 public totalMinedSupply;
@@ -35,14 +36,6 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
     mapping(address => uint256) private lastRewardClaim;
     mapping(address => bool) private blacklistedAddresses;
 
-    struct Allocation {
-        uint256 amount;
-        uint256 claimed;
-        uint256 lastClaim;
-    }
-
-    mapping(address => Allocation) public teamAdvisorAllocations;
-
     event RewardClaimed(address indexed user, uint256 amount);
     event TokenTransferred(address indexed sender, address indexed recipient, uint256 amount);
     event TokenTransacted(address indexed sender, address indexed recipient, uint256 tokenAmount, uint256 rewardAmount);
@@ -58,52 +51,21 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
     constructor(
         address _developmentFund,
         address _liquidityPool,
-        address[] memory teamAdvisors,
-        uint256[] memory _teamAdvisorAllocationAmounts
-    ) ERC20("BlueBirdX", "BRD") {
+        address _teamAdvisors
+    ) ERC20("BlueBirdX", "OMEGA") {
         require(_developmentFund != address(0), "Development fund address cannot be zero address");
         require(_liquidityPool != address(0), "Liquidity pool address cannot be zero address");
 
         developmentFund = _developmentFund;
         liquidityPool = _liquidityPool;
+        teamAdvisors = _teamAdvisors;
         miningRate = 50;
         deploymentTime = block.timestamp;
-
-        // Mint tokens for the liquidity pool, development fund, and team andadvisors
-        uint256 liquidityPoolTokens = (MAX_SUPPLY * liquidityPoolRate) / 10000;
-        uint256 developmentFundTokens = (MAX_SUPPLY * developmentFundRate) / 10000;
-        uint256 teamAdvisorsTotalTokens = (MAX_SUPPLY * teamAdvisorsRate) / 10000;
-
-        _mint(liquidityPool, liquidityPoolTokens);
-        _mint(developmentFund, developmentFundTokens);
-        uint256 teamAdvisorsAllocatedTokens = 0;
-
-        // Assign allocations to team and advisors and mint tokens
-        for (uint256 i = 0; i < teamAdvisors.length; i++) {
-            Allocation memory allocation;
-            allocation.amount = _teamAdvisorAllocationAmounts[i];
-            allocation.claimed = 0;
-            allocation.lastClaim = block.timestamp + INITIAL_LOCK_PERIOD;
-            teamAdvisorAllocations[teamAdvisors[i]] = allocation;
-
-            // Mint tokens for the team advisors
-            _mint(teamAdvisors[i], _teamAdvisorAllocationAmounts[i]);
-
-            teamAdvisorsAllocatedTokens += _teamAdvisorAllocationAmounts[i];
-        }
-
-        // Ensure that the total tokens minted for team advisors do not exceed the specified percentage
-        require(
-            teamAdvisorsAllocatedTokens == teamAdvisorsTotalTokens,
-            "Allocations do not match total tokens for team and advisors"
-        );
 
         // Exclude development fund, liquidity pool, and team advisor wallets from the maximum allowed balance
         isExcludedFromMaxBalance[developmentFund] = true;
         isExcludedFromMaxBalance[liquidityPool] = true;
-        for (uint256 i = 0; i < teamAdvisors.length; i++) {
-            isExcludedFromMaxBalance[teamAdvisors[i]] = true;
-        }
+        isExcludedFromMaxBalance[teamAdvisors] = true;
     }
 
     function _transfer(address sender, address recipient, uint256 amount) internal override {
@@ -211,7 +173,7 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
         uint256 rewardAmount = (amount * currentMiningRate) / 10000;
 
         // Ensure the reward does not exceed the remaining supply
-require(remainingSupply >= rewardAmount, "Not enough remaining supply for reward");
+        require(remainingSupply >= rewardAmount, "Not enough remaining supply for reward");
 
         // Update the total mined supply and the remaining supply
         totalMinedSupply += rewardAmount;
@@ -228,24 +190,6 @@ require(remainingSupply >= rewardAmount, "Not enough remaining supply for reward
 
         emit RewardClaimed(msg.sender, rewardAmount);
         emit TokenTransacted(msg.sender, recipient, amount - totalFee, rewardAmount);
-    }
-
-    function claimTeamAdvisorDistribution() external nonReentrant {
-        Allocation storage allocation = teamAdvisorAllocations[msg.sender];
-        require(allocation.amount > 0, "No allocation for this address");
-        require(block.timestamp >= allocation.lastClaim + QUARTER, "Claim period has not passed yet");
-
-        uint256 claimableAmount = (allocation.amount * 25) / 100; // 25% of the allocation
-        require(claimableAmount > 0, "No claimable amount");
-
-        // Update the claimed amount and the last claim time
-        allocation.claimed += claimableAmount;
-        allocation.lastClaim = block.timestamp;
-
-        // Mint the claimable tokens for the team advisor
-        _mint(msg.sender, claimableAmount);
-
-        emit TeamAdvisorDistributionClaimed(msg.sender, claimableAmount);
     }
 
     function claimReward() public nonReentrant {
@@ -269,17 +213,57 @@ require(remainingSupply >= rewardAmount, "Not enough remaining supply for reward
         emit RewardClaimed(msg.sender, reward);
     }
 
-    function blacklistAddress(address account) public onlyOwner {
-        require(account != address(0), "Cannot blacklist zero address");
-        require(!blacklistedAddresses[account], "Address is already blacklisted");
-
-        blacklistedAddresses[account] = true;
+    function blacklistAddress(address _address) external onlyOwner {
+        require(_address != address(0), "Address cannot be zero address");
+        blacklistedAddresses[_address] = true;
     }
 
-    function removeAddressFromBlacklist(address account) public onlyOwner {
-        require(account != address(0), "Cannot remove zero address from blacklist");
-        require(blacklistedAddresses[account], "Address is not blacklisted");
+    function removeAddressFromBlacklist(address _address) external onlyOwner {
+        require(_address != address(0), "Address cannot be zero address");
+        blacklistedAddresses[_address] = false;
+    }
 
-        blacklistedAddresses[account] = false;
+    function claimTeamAdvisorDistribution() external {
+        require(msg.sender == teamAdvisors, "Only the team advisor can claim the distribution");
+        require(block.timestamp > deploymentTime + INITIAL_LOCK_PERIOD, "Distribution is locked for the initial period");
+
+        uint256 claimableAmount = totalMinedSupply / 20; // 5% of the total mined supply
+        require(remainingSupply >= claimableAmount, "Not enough remaining supply for distribution");
+
+        // Update the total mined supply and the remaining supply
+        totalMinedSupply += claimableAmount;
+        remainingSupply -= claimableAmount;
+
+        // Mint the distribution tokens for the team advisor
+        _mint(teamAdvisors, claimableAmount);
+
+        emit TeamAdvisorDistributionClaimed(teamAdvisors, claimableAmount);
+    }
+
+    function setDevelopmentFund(address _developmentFund) external onlyOwner {
+        require(_developmentFund != address(0), "Development fund address cannot be zero address");
+        developmentFund = _developmentFund;
+    }
+
+    function setLiquidityPool(address _liquidityPool) external onlyOwner {
+        require(_liquidityPool != address(0), "Liquidity pool address cannot be zero address");
+        liquidityPool = _liquidityPool;
+    }
+
+    function setTeamAdvisors(address _teamAdvisors) external onlyOwner {
+        require(_teamAdvisors != address(0), "Team advisors address cannot be zero address");
+        teamAdvisors = _teamAdvisors;
+    }
+
+    function setMiningRate(uint256 _miningRate) external onlyOwner {
+        miningRate = _miningRate;
+    }
+
+    function setTransferFeeRate(uint256 _transferFeeRate) external onlyOwner {
+        transferFeeRate = _transferFeeRate;
+    }
+
+    function setDevelopmentFundFeeRate(uint256 _developmentFundFeeRate) external onlyOwner {
+        developmentFundFeeRate = _developmentFundFeeRate;
     }
 }
