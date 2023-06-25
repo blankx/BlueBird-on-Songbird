@@ -15,7 +15,7 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
     address public teamAdvisors;
     uint256 public miningRate;
     uint256 public currentMiningRate = 100;
-    uint256 public liquidityPoolRate = 2000; // 20% of all mined tokens
+    uint256 public liquidityPoolRate = 1000; // 10% of all mined tokens
     uint256 public developmentFundRate = 500; // 5% of all mined tokens
     uint256 public teamAdvisorsRate = 500; // 5% of all mined tokens
     uint256 public deploymentTime;
