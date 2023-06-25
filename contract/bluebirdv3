@@ -33,7 +33,7 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
     mapping(address => bool) public isExcludedFromMaxBalance;
     mapping(address => bool) public isExcludedFromTransferFee;
     mapping(address => uint256) private lastRewardClaim;
-    mapping(address => uint256) private _balances;
+    mapping(address => bool) private blacklistedAddresses;
 
     struct Allocation {
         uint256 amount;
@@ -69,7 +69,7 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
         miningRate = 50;
         deploymentTime = block.timestamp;
 
-        // Mint tokens for the liquidity pool, development fund, and team and advisors
+        // Mint tokens for the liquidity pool, development fund, and team andadvisors
         uint256 liquidityPoolTokens = (MAX_SUPPLY * liquidityPoolRate) / 10000;
         uint256 developmentFundTokens = (MAX_SUPPLY * developmentFundRate) / 10000;
         uint256 teamAdvisorsTotalTokens = (MAX_SUPPLY * teamAdvisorsRate) / 10000;
@@ -91,6 +91,7 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
 
             teamAdvisorsAllocatedTokens += _teamAdvisorAllocationAmounts[i];
         }
+
         // Ensure that the total tokens minted for team advisors do not exceed the specified percentage
         require(
             teamAdvisorsAllocatedTokens == teamAdvisorsTotalTokens,
@@ -105,18 +106,10 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
-    function _mint(address account, uint256 amount) internal override(ERC20) {
-        require(account != address(0), "ERC20: mint to the zero address");
-        require(totalSupply() + amount <= MAX_SUPPLY, "ERC20: total supply exceeds MAX_SUPPLY");
-
-        super._mint(account, amount);
-    }
-
     function _transfer(address sender, address recipient, uint256 amount) internal override {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
-        require(_balances[sender] >= amount, "Insufficient balance");
 
         uint256 maxAllowedBalance = (MAX_SUPPLY * MAX_ALLOWED_BALANCE_PERCENTAGE) / 10000;
         if (!isExcludedFromMaxBalance[recipient]) {
@@ -137,21 +130,44 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
         }
 
         // Update balances
-        _balances[sender] -= amount;
-        _balances[recipient] += amount - transferFee - developmentFundFee - slidingTransferFee;
-
-        // Distribute the fees
-        _balances[liquidityPool] += transferFee + slidingTransferFee / 2;
-        _balances[developmentFund] += developmentFundFee + slidingTransferFee / 2;
+        super._transfer(sender, recipient, amount - transferFee - developmentFundFee - slidingTransferFee);
+        super._transfer(sender, liquidityPool, transferFee + slidingTransferFee / 2);
+        super._transfer(sender, developmentFund, developmentFundFee + slidingTransferFee / 2);
 
         emit Transfer(sender, recipient, amount - transferFee - developmentFundFee - slidingTransferFee);
     }
 
-    function addEligibleToken(address tokenAddress) external onlyOwner {
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        require(amount > 0, "Transfer amount must be greater than zero");
+
+        // Calculate the regular transfer fee
+        uint256 transferFee = (amount * transferFeeRate) / 1000; // 0.1% of the amount
+        uint256 developmentFundFee = (amount * developmentFundFeeRate) / 10000; // 0.01% of the amount
+
+        // Calculate the total fee
+        uint256 totalFee = transferFee + developmentFundFee;
+
+        // Ensure the sender has enough balance to cover the amount and the fees
+        require(balanceOf(msg.sender) >= amount, "Insufficient balance to cover amount and fees");
+
+        // Deduct the transfer amount and fees from the sender's balance
+        super._transfer(msg.sender, recipient, amount - totalFee);
+        super._transfer(msg.sender, liquidityPool, transferFee);
+        super._transfer(msg.sender, developmentFund, developmentFundFee);
+
+        emit Transfer(msg.sender, recipient, amount - totalFee);
+        emit TokenTransferred(msg.sender, recipient, amount - totalFee);
+
+        return true;
+    }
+
+    function addEligibleToken(address tokenAddress, uint256 newMiningRate) public onlyOwner {
         require(tokenAddress != address(0), "Token address cannot be zero address");
         require(!eligibleTokens[tokenAddress], "Token is already eligible for mining rewards");
 
         eligibleTokens[tokenAddress] = true;
+        tokenMiningRates[tokenAddress] = newMiningRate;
         eligibleTokenAddresses.push(tokenAddress); // Add token to the list of eligible tokens
     }
 
@@ -180,9 +196,10 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
 
         // Ensure the sender has enough balance to cover the amount and the fees
         require(
-            IERC20(tokenAddress).balanceOf(msg.sender) >= amount + totalFee,
+            IERC20(tokenAddress).balanceOf(msg.sender) >= amount,
             "Insufficient balance to cover amount and fees"
         );
+
         // Transfer the amount minus the fees from the sender to the recipient
         IERC20(tokenAddress).transferFrom(msg.sender, recipient, amount - totalFee);
 
@@ -191,95 +208,78 @@ contract BlueBirdX is ERC20, Ownable, ReentrancyGuard {
         IERC20(tokenAddress).transferFrom(msg.sender, developmentFund, developmentFundFee);
 
         // Calculate the reward based on the mining rate
-        uint256 rewardAmount = (amount * currentMiningRate) / 100;
+        uint256 rewardAmount = (amount * currentMiningRate) / 10000;
 
-        // Update the total mined supply and remaining supply
+        // Ensure the reward does not exceed the remaining supply
+require(remainingSupply >= rewardAmount, "Not enough remaining supply for reward");
+
+        // Update the total mined supply and the remaining supply
         totalMinedSupply += rewardAmount;
-        require(totalMinedSupply <= MAX_SUPPLY, "Total mined supply cannot exceed MAX_SUPPLY");
-        remainingSupply = MAX_SUPPLY - totalMinedSupply;
+        remainingSupply -= rewardAmount;
 
-        // Update the user's balance
-        _mint(msg.sender, rewardAmount);
+        // Check if the total mined supply has reached a 10% milestone of the remaining supply
+        if (totalMinedSupply >= remainingSupply / 10) {
+            // Reduce the mining rate by 10%
+            currentMiningRate = (currentMiningRate * 90) / 100;
+        }
 
-        emit TokenTransacted(msg.sender, recipient, amount, rewardAmount);
-    }
-
-    function claimReward() external nonReentrant {
-        require(lastRewardClaim[msg.sender] < block.timestamp, "You have already claimed your daily reward");
-        lastRewardClaim[msg.sender] = block.timestamp + 1 days;
-
-        // Calculate the daily reward based on the user's balance
-        uint256 rewardAmount = (balanceOf(msg.sender) * 1) / 100;
-
-        // Mint new tokens and add them to the user's balance
+        // Mint the reward tokens for the sender
         _mint(msg.sender, rewardAmount);
 
         emit RewardClaimed(msg.sender, rewardAmount);
-    }
-
-    function getEligibleTokens() public view returns (address[] memory) {
-        return eligibleTokenAddresses;
-    }
-
-    function setMiningRate(address tokenAddress, uint256 newMiningRate) external onlyOwner {
-        require(eligibleTokens[tokenAddress], "Token is not eligible for mining rewards");
-        require(newMiningRate > 0, "New mining rate must be greater than 0");
-
-        tokenMiningRates[tokenAddress] = newMiningRate;
-    }
-
-    function setTransferFeeRates(uint256 newTransferFee, uint256 newDevelopmentFundFee) external onlyOwner {
-        require(newTransferFee >= 0 && newTransferFee <= 10000, "Invalid transfer fee rate");
-        require(newDevelopmentFundFee >= 0 && newDevelopmentFundFee <= 10000, "Invalid development fund fee rate");
-        transferFeeRate = newTransferFee;
-        developmentFundFeeRate = newDevelopmentFundFee;
-    }
-
-    function setSlidingTransferFeeThreshold(uint256 newThreshold) external onlyOwner {
-        require(newThreshold > 0, "New threshold must be greater than 0");
-        SLIDING_TRANSFER_FEE_THRESHOLD = newThreshold;
-    }
-
-    function getRewardAmount(address tokenAddress, uint256 amount) public view returns (uint256) {
-        require(eligibleTokens[tokenAddress], "Token is not eligible for mining rewards");
-        uint256 rewardAmount = (amount * currentMiningRate) / 100;
-        return rewardAmount;
+        emit TokenTransacted(msg.sender, recipient, amount - totalFee, rewardAmount);
     }
 
     function claimTeamAdvisorDistribution() external nonReentrant {
         Allocation storage allocation = teamAdvisorAllocations[msg.sender];
-        require(allocation.amount > 0, "No distribution allocated for the sender");
-        require(block.timestamp >= allocation.lastClaim, "Distribution not available yet");
+        require(allocation.amount > 0, "No allocation for this address");
+        require(block.timestamp >= allocation.lastClaim + QUARTER, "Claim period has not passed yet");
 
-        uint256 currentTime = block.timestamp;
-        uint256 timeSinceLastClaim = currentTime.sub(allocation.lastClaim);
-        uint256 quartersSinceLastClaim = timeSinceLastClaim.div(QUARTER);
+        uint256 claimableAmount = (allocation.amount * 25) / 100; // 25% of the allocation
+        require(claimableAmount > 0, "No claimable amount");
 
-        if (quartersSinceLastClaim > 0) {
-            uint256 amountToClaim = allocation.amount.mul(quartersSinceLastClaim).div(4);
-            allocation.claimed = allocation.claimed.add(amountToClaim);
-            allocation.lastClaim = allocation.lastClaim.add(quartersSinceLastClaim.mul(QUARTER));
+        // Update the claimed amount and the last claim time
+        allocation.claimed += claimableAmount;
+        allocation.lastClaim = block.timestamp;
 
-            // Mint tokens and add them to the team advisor's balance
-            _mint(msg.sender, amountToClaim);
+        // Mint the claimable tokens for the team advisor
+        _mint(msg.sender, claimableAmount);
 
-            emit TeamAdvisorDistributionClaimed(msg.sender, amountToClaim);
-        }
+        emit TeamAdvisorDistributionClaimed(msg.sender, claimableAmount);
     }
 
-    function excludeFromTransferFee(address account) external onlyOwner {
-        isExcludedFromTransferFee[account] = true;
+    function claimReward() public nonReentrant {
+        require(block.timestamp > lastRewardClaim[msg.sender] + 1 days, "Claim is only possible once every 24 hours");
+        require(balanceOf(msg.sender) > 0, "No tokens to claim rewards for");
+        require(!blacklistedAddresses[msg.sender], "Address is blacklisted from claiming rewards");
+
+        uint256 reward = balanceOf(msg.sender) / 1000; // 0.1% of the token balance
+        require(remainingSupply >= reward, "Not enough remaining supply for reward");
+
+        // Update the total mined supply and the remaining supply
+        totalMinedSupply += reward;
+        remainingSupply -= reward;
+
+        // Update the last claim time
+        lastRewardClaim[msg.sender] = block.timestamp;
+
+        // Mint the reward tokens for the sender
+        _mint(msg.sender, reward);
+
+        emit RewardClaimed(msg.sender, reward);
     }
 
-    function includeInTransferFee(address account) external onlyOwner {
-        isExcludedFromTransferFee[account] = false;
+    function blacklistAddress(address account) public onlyOwner {
+        require(account != address(0), "Cannot blacklist zero address");
+        require(!blacklistedAddresses[account], "Address is already blacklisted");
+
+        blacklistedAddresses[account] = true;
     }
 
-    function excludeFromMaxBalance(address account) external onlyOwner {
-        isExcludedFromMaxBalance[account] = true;
-    }
+    function removeAddressFromBlacklist(address account) public onlyOwner {
+        require(account != address(0), "Cannot remove zero address from blacklist");
+        require(blacklistedAddresses[account], "Address is not blacklisted");
 
-    function includeInMaxBalance(address account) external onlyOwner {
-        isExcludedFromMaxBalance[account] = false;
+        blacklistedAddresses[account] = false;
     }
 }
